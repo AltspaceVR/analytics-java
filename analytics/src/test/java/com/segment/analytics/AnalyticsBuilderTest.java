@@ -60,6 +60,15 @@ public class AnalyticsBuilderTest {
     }
   }
 
+  @Test public void nullLogLevel() {
+    try {
+      builder.logLevel(null);
+      fail("Should fail for null logLevel");
+    } catch (NullPointerException e) {
+      assertThat(e).hasMessage("Null logLevel");
+    }
+  }
+
   @Test public void nullTransformer() {
     try {
       builder.messageTransformer(null);

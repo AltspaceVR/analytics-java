@@ -2,6 +2,7 @@ package com.segment.analytics;
 
 import com.segment.analytics.TestUtils.MessageBuilderTest;
 import com.segment.analytics.internal.AnalyticsClient;
+import com.segment.analytics.internal.Logger;
 import com.segment.analytics.messages.Message;
 import com.segment.analytics.messages.MessageBuilder;
 import com.squareup.burst.BurstJUnit4;
@@ -19,7 +20,7 @@ import static org.mockito.MockitoAnnotations.initMocks;
 
 @RunWith(BurstJUnit4.class) public class AnalyticsTest {
   @Mock AnalyticsClient client;
-  @Mock Log log;
+  @Mock Logger logger;
   @Mock MessageTransformer messageTransformer;
   @Mock MessageInterceptor messageInterceptor;
   Analytics analytics;
@@ -28,7 +29,7 @@ import static org.mockito.MockitoAnnotations.initMocks;
     initMocks(this);
 
     analytics = new Analytics(client, Collections.singletonList(messageTransformer),
-        Collections.singletonList(messageInterceptor), log);
+        Collections.singletonList(messageInterceptor), logger);
   }
 
   @Test public void enqueueIsDispatched(MessageBuilderTest builder) {

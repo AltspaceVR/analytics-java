@@ -6,6 +6,7 @@ import com.segment.analytics.gson.AutoValueAdapterFactory;
 import com.segment.analytics.gson.ISO8601DateAdapter;
 import com.segment.analytics.http.SegmentService;
 import com.segment.analytics.internal.AnalyticsClient;
+import com.segment.analytics.internal.Logger;
 import com.segment.analytics.messages.Message;
 import com.segment.analytics.messages.MessageBuilder;
 import com.squareup.okhttp.Credentials;
@@ -40,14 +41,14 @@ public class Analytics {
   private final AnalyticsClient client;
   private final List<MessageTransformer> messageTransformers;
   private final List<MessageInterceptor> messageInterceptors;
-  private final Log log;
+  private final Logger logger;
 
   Analytics(AnalyticsClient client, List<MessageTransformer> messageTransformers,
-      List<MessageInterceptor> messageInterceptors, Log log) {
+      List<MessageInterceptor> messageInterceptors, Logger logger) {
     this.client = client;
     this.messageTransformers = messageTransformers;
     this.messageInterceptors = messageInterceptors;
-    this.log = log;
+    this.logger = logger;
   }
 
   /**
@@ -64,7 +65,7 @@ public class Analytics {
     for (MessageTransformer messageTransformer : messageTransformers) {
       boolean shouldContinue = messageTransformer.transform(builder);
       if (!shouldContinue) {
-        log.print(Log.Level.VERBOSE, "Skipping message %s.", builder);
+        logger.log(Log.Level.DEBUG, "Skipping message %s.", builder);
         return;
       }
     }
@@ -72,7 +73,7 @@ public class Analytics {
     for (MessageInterceptor messageInterceptor : messageInterceptors) {
       message = messageInterceptor.intercept(message);
       if (message == null) {
-        log.print(Log.Level.VERBOSE, "Skipping message %s.", builder);
+        logger.log(Log.Level.DEBUG, "Skipping message %s.", builder);
         return;
       }
     }
@@ -97,6 +98,7 @@ public class Analytics {
     private final String writeKey;
     private Client client;
     private Log log;
+    private Log.Level logLevel;
     private List<MessageTransformer> messageTransformers;
     private List<MessageInterceptor> messageInterceptors;
     private ExecutorService networkExecutor;
@@ -127,6 +129,15 @@ public class Analytics {
         throw new NullPointerException("Null log");
       }
       this.log = log;
+      return this;
+    }
+
+    /** Configure debug logging level. */
+    public Builder logLevel(Log.Level logLevel) {
+      if (logLevel == null) {
+        throw new NullPointerException("Null logLevel");
+      }
+      this.logLevel = logLevel;
       return this;
     }
 
@@ -234,6 +245,9 @@ public class Analytics {
       if (log == null) {
         log = Log.NONE;
       }
+      if (logLevel == null) {
+        logLevel = Log.Level.NONE;
+      }
       if (flushIntervalInMillis == 0) {
         flushIntervalInMillis = Platform.get().defaultFlushIntervalInMillis();
       }
@@ -262,6 +276,24 @@ public class Analytics {
         callbacks = Collections.unmodifiableList(callbacks);
       }
 
+
+      final RestAdapter.LogLevel restAdapterLogLevel;
+      switch (logLevel) {
+        case NONE:
+        case ERROR:
+          restAdapterLogLevel = RestAdapter.LogLevel.NONE;
+          break;
+        case DEBUG:
+          restAdapterLogLevel = RestAdapter.LogLevel.BASIC;
+          break;
+        case VERBOSE:
+          restAdapterLogLevel = RestAdapter.LogLevel.FULL;
+          break;
+        default:
+          throw new AssertionError("unknown log level: " + logLevel);
+      }
+      Logger logger = new Logger(log, logLevel);
+
       RestAdapter restAdapter = new RestAdapter.Builder()
           .setConverter(new GsonConverter(gson))
           .setEndpoint(DEFAULT_ENDPOINT)
@@ -271,10 +303,10 @@ public class Analytics {
               request.addHeader(AUTHORIZATION_HEADER, Credentials.basic(writeKey, ""));
             }
           })
-          .setLogLevel(RestAdapter.LogLevel.FULL)
+          .setLogLevel(restAdapterLogLevel)
           .setLog(new RestAdapter.Log() {
             @Override public void log(String message) {
-              log.print(Log.Level.VERBOSE, "%s", message);
+              log.print(message);
             }
           })
           .build();
@@ -282,9 +314,9 @@ public class Analytics {
       SegmentService segmentService = restAdapter.create(SegmentService.class);
 
       AnalyticsClient analyticsClient =
-          AnalyticsClient.create(segmentService, flushQueueSize, flushIntervalInMillis, log,
+          AnalyticsClient.create(segmentService, flushQueueSize, flushIntervalInMillis, logger,
               threadFactory, networkExecutor, callbacks);
-      return new Analytics(analyticsClient, messageTransformers, messageInterceptors, log);
+      return new Analytics(analyticsClient, messageTransformers, messageInterceptors, logger);
     }
   }
 }

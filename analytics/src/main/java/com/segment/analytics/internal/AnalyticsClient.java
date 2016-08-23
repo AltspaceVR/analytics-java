@@ -1,7 +1,6 @@
 package com.segment.analytics.internal;
 
 import com.segment.analytics.Callback;
-import com.segment.analytics.Log;
 import com.segment.analytics.http.SegmentService;
 import com.segment.analytics.messages.Batch;
 import com.segment.analytics.messages.Message;
@@ -40,26 +39,26 @@ public class AnalyticsClient {
   private final BlockingQueue<Message> messageQueue;
   private final SegmentService service;
   private final int size;
-  private final Log log;
+  private final Logger logger;
   private final List<Callback> callbacks;
   private final ExecutorService networkExecutor;
   private final ExecutorService looperExecutor;
   private final ScheduledExecutorService flushScheduler;
 
   public static AnalyticsClient create(SegmentService segmentService, int flushQueueSize,
-      long flushIntervalInMillis, Log log, ThreadFactory threadFactory,
+      long flushIntervalInMillis, Logger logger, ThreadFactory threadFactory,
       ExecutorService networkExecutor, List<Callback> callbacks) {
     return new AnalyticsClient(new LinkedBlockingQueue<Message>(), segmentService, flushQueueSize,
-        flushIntervalInMillis, log, threadFactory, networkExecutor, callbacks);
+        flushIntervalInMillis, logger, threadFactory, networkExecutor, callbacks);
   }
 
   AnalyticsClient(BlockingQueue<Message> messageQueue, SegmentService service, int maxQueueSize,
-      long flushIntervalInMillis, Log log, ThreadFactory threadFactory,
+      long flushIntervalInMillis, Logger logger, ThreadFactory threadFactory,
       ExecutorService networkExecutor, List<Callback> callbacks) {
     this.messageQueue = messageQueue;
     this.service = service;
     this.size = maxQueueSize;
-    this.log = log;
+    this.logger = logger;
     this.callbacks = callbacks;
     this.looperExecutor = Executors.newSingleThreadExecutor(threadFactory);
     this.networkExecutor = networkExecutor;
@@ -78,7 +77,10 @@ public class AnalyticsClient {
     try {
       messageQueue.put(message);
     } catch (InterruptedException e) {
-      log.print(ERROR, e, "Interrupted while adding message %s.", message);
+      logger.log(ERROR, "Interrupted with %s while adding message %s.", e, message);
+      for (Callback callback : callbacks) {
+        callback.failure(message, e);
+      }
     }
   }
 
@@ -108,19 +110,20 @@ public class AnalyticsClient {
           if (message != FlushMessage.POISON) {
             messages.add(message);
           } else if (messages.size() < 1) {
-            log.print(VERBOSE, "No messages to flush.");
+            logger.log(VERBOSE, "No messages to flush.");
             continue;
           }
 
           if (messages.size() >= size || message == FlushMessage.POISON) {
             Batch batch = Batch.create(CONTEXT, messages);
-            log.print(VERBOSE, "Batching %s message(s) into batch %s.", messages.size(), batch.sequence());
+            logger.log(VERBOSE, "Batching %s message(s) into batch %s.", messages.size(),
+                batch.sequence());
             networkExecutor.submit(BatchUploadTask.create(AnalyticsClient.this, batch));
             messages = new ArrayList<>();
           }
         }
       } catch (InterruptedException e) {
-        log.print(DEBUG, "Looper interrupted while polling for messages.");
+        logger.log(DEBUG, "Looper interrupted while polling for messages %s.", e);
       }
     }
   }
@@ -150,12 +153,12 @@ public class AnalyticsClient {
     /** Returns {@code true} to indicate a batch should be retried. {@code false} otherwise. */
     boolean upload() {
       try {
-        client.log.print(VERBOSE, "Uploading batch %s.", batch.sequence());
+        client.logger.log(VERBOSE, "Uploading batch %s.", batch.sequence());
 
         // Ignore return value, UploadResponse#onSuccess will never return false for 200 OK
         client.service.upload(batch);
 
-        client.log.print(VERBOSE, "Uploaded batch %s.", batch.sequence());
+        client.logger.log(VERBOSE, "Uploaded batch %s.", batch.sequence());
         for (Message message : batch.batch()) {
           for (Callback callback : client.callbacks) {
             callback.success(message);
@@ -165,10 +168,12 @@ public class AnalyticsClient {
       } catch (RetrofitError error) {
         switch (error.getKind()) {
           case NETWORK:
-            client.log.print(DEBUG, error, "Could not upload batch %s. Retrying.", batch.sequence());
+            client.logger.log(DEBUG, "Could not upload batch %s with error %s. Retrying.",
+                batch.sequence(), error);
             return true;
           default:
-            client.log.print(ERROR, error, "Could not upload batch %s. Giving up.", batch.sequence());
+            client.logger.log(ERROR, "Could not upload batch %s with error. Giving up.",
+                batch.sequence(), error);
             for (Message message : batch.batch()) {
               for (Callback callback : client.callbacks) {
                 callback.failure(message, error);
@@ -186,12 +191,13 @@ public class AnalyticsClient {
         try {
           backo.sleep(attempt);
         } catch (InterruptedException e) {
-          client.log.print(DEBUG, "Thread interrupted while backing off for batch %s.", batch.sequence());
+          client.logger.log(DEBUG, "Thread interrupted while backing off for batch %s.",
+              batch.sequence());
           return;
         }
       }
 
-      client.log.print(ERROR, "Could not upload batch %s. Retries exhausted.", batch.sequence());
+      client.logger.log(ERROR, "Could not upload batch %s. Retries exhausted.", batch.sequence());
       IOException exception = new IOException(MAX_ATTEMPTS + " retries exhausted");
       for (Message message : batch.batch()) {
         for (Callback callback : client.callbacks) {

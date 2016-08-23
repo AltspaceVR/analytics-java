@@ -47,12 +47,12 @@ public class AnalyticsClientTest {
   private static final Backo BACKO =
       Backo.builder().base(TimeUnit.NANOSECONDS, 1).factor(1).build();
 
-  Log log = Log.NONE;
   ThreadFactory threadFactory;
   @Mock BlockingQueue<Message> messageQueue;
   @Mock SegmentService segmentService;
   @Mock ExecutorService networkExecutor;
   @Mock Callback callback;
+  @Mock Logger logger;
 
   @Before public void setUp() {
     initMocks(this);
@@ -61,7 +61,7 @@ public class AnalyticsClientTest {
 
   // Defers loading the client until tests can initialize all required dependencies.
   AnalyticsClient newClient() {
-    return new AnalyticsClient(messageQueue, segmentService, 50, TimeUnit.HOURS.toMillis(1), log,
+    return new AnalyticsClient(messageQueue, segmentService, 50, TimeUnit.HOURS.toMillis(1), logger,
         threadFactory, networkExecutor, Collections.singletonList(callback));
   }
 

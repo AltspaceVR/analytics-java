@@ -1,6 +1,7 @@
 package sample;
 
 import com.segment.analytics.Analytics;
+import com.segment.analytics.Log;
 import com.segment.analytics.messages.TrackMessage;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -13,8 +14,9 @@ public class Main {
 
     // https://segment.com/segment-engineering/sources/test-java/debugger
     final Analytics analytics = Analytics.builder("xemyw6oe3n") //
-        .plugin(blockingFlush.plugin())
-        .plugin(new LoggingPlugin())
+        .plugin(blockingFlush.asPlugin())
+        .log(Log.STDOUT)
+        .logLevel(Log.Level.DEBUG)
         .build();
 
     final String userId = System.getProperty("user.name");

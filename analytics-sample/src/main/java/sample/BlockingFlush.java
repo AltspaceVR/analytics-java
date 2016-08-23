@@ -16,7 +16,7 @@ import java.util.concurrent.Phaser;
  * <pre><code>
  * BlockingFlush blockingFlush = BlockingFlush.create();
  * Analytics analytics = Analytics.builder(writeKey)
- *      .plugin(blockingFlush)
+ *      .plugin(blockingFlush.asPlugin())
  *      .build();
  *
  * // Do some work.
@@ -38,7 +38,7 @@ public class BlockingFlush {
 
   final Phaser phaser;
 
-  public Plugin plugin() {
+  public Plugin asPlugin() {
     return new Plugin() {
       @Override public void configure(Analytics.Builder builder) {
         builder.messageTransformer(new MessageTransformer() {
